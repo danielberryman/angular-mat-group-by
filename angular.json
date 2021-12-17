@@ -127,6 +127,9 @@
               "devServerTarget": "ng-groupby-example:serve:production"
             }
           }
+        },
+        "deploy": {
+          "builder": "angular-cli-ghpages:deploy"
         }
       }
     }

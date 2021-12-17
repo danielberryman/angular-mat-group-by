@@ -141,15 +141,81 @@ handleFilter(filterName?: string) {
 ### Build the group by into the data
 - To build the grouped data I made use of recursion in the event there were 1+ filters
 - *This method currently calculates the entire grouping every time. There's room for optimization here.*
-- Here's the Psuedocode
-  - sort by the first filter
-  - iterate through the list of records you've already filtered to ensure each record has at least one duplicate
-  - TODO: continue to work through this function explanation
+- Overall explanation:
+  - Sort the list by the filterName
+  - Iterate through the list keeping track of the range of records in the list that have a matching filter (since they're sorted this will work)
+  - When a record that doesn't match the subsequent filters is found then we know everything that came before should be in a group. We break that into a subsection and call the fn recursively on that subsection.
+  - Once everything in that subsection is sorted based on the filters applied then we create the GroupByHeader object
+  - Finally we add the GroupByHeader to the result array and then the subsection to the result array
+- Note:
+  - The `topLvGroup` boolean allows us to track where are recursively and therefore when we're ready to create the GroupByHeader obj
+  - Variable `start` allows for defining the range of the current subsection
+```javascript
+buildGroupByData(filteredList: (Pizza | GroupByHeader)[], activeFiltersItr, filterIndex: number, topLvGroup: boolean, filterName: string): (Pizza | GroupByHeader)[] {
+    let result: (Pizza | GroupByHeader)[] = [];
+    let start = 0;
+
+    this.sortByFilter(filteredList, filterName);
+
+    for (let i = 0; i < filteredList.length; i++) {
+      let subSection;
+
+      if (i === filteredList.length-1) {
+        subSection = filteredList.slice(start, filteredList.length);
+        if (topLvGroup) {
+          // add GroupByHeader result
+          let n = this.buildGroupByHeaderName(subSection.length ? subSection[0] : filteredList[0]);
+          let g: GroupByHeader = { name: n, isGroupBy: true }
+          result.push(g);
+          // add SubSection to result
+          result.push(...subSection);
+        }
+      } else if (i > 0 && filteredList[i][filterName] !== filteredList[i-1][filterName]) {
+        if (filterIndex !== this.activeFilters.size && this.activeFilters.size > 1) {
+          // Recursion call
+          subSection = this.buildGroupByData(filteredList.slice(start, i), activeFiltersItr, filterIndex++, false, filterName);
+        }
+        if (this.activeFilters.size === 1 || !subSection.length) {
+          subSection = filteredList.slice(start, i);
+        }
+        if (topLvGroup) {
+          // add GroupByHeader result
+          let n = this.buildGroupByHeaderName(subSection.length ? subSection[0] : filteredList);
+          let g: GroupByHeader = {
+            name: n,
+            isGroupBy: true
+          }
+          result.push(g);
+          // add SubSection to result
+          result.push(...subSection);
+        }
+        // reset start of the next section we're ordering to the current index before it's incremented
+        start = i;
+      }
+    }
+    return result;
+  }
+```
 
 ### Reset the list and rerender the table
-
+- Once we have our filtered data we need to pass that updated array to dataSource.data
+- And then in order to show the new data in the table we rerender the table. Here's where we use the @ViewChild decorator `table` by calling:
+```javascript
+this.table.renderRows();
+```
+- Finally add a helper function to the component to check if a row in the updated data is a GroupByHeader object
+- *index is passed automatically by the mat-row WHEN:* SEE LAST HTML SECTION
+```javascript
+isGroup(index, item): boolean {
+  return item.isGroupBy;
+}
+```
 
 ## Update HTML for doing GROUP BY
+- To show the GroupByHeader rows we need to add another column definition
+- It's similar to the others except there's no mat-cell since we want the group by header to span the entire table row (do this by adding `colspan`)
+- For this header row the `columns:` is passed an array literal with one value which must match the `matColumnDef`
+- And again we use the `when` clause to check if the row is has a isGroupBy property of true using our helper function `isGroup` that we defined in the component.
 ```html
 <ng-container matColumnDef="groupHeader">
   <td mat-cell *matCellDef="let groupBy" colspan="8" class="groupByHeaderRow">{{ groupBy.name }}</td>
@@ -157,3 +223,5 @@ handleFilter(filterName?: string) {
 
 <tr mat-row *matRowDef="let row; columns: ['groupHeader']; when: isGroup"></tr>
 ```
+
+And that's the basic setup! There's lots of room for improvement. I haven't touched on sorting at all. You could implement the changing of the order of the filters as well as filtering based on an input. I welcome your insights and ideas :)
